@@ -1,0 +1,23 @@
+# IDE and OS
+*.iml
+.idea/
+.DS_Store
+
+# Local machine config
+local.properties
+.android-sdk/
+.kotlin/
+
+# Build and cache artifacts
+.gradle/
+build/
+builds/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Android artifacts
+*.apk
+*.ap_
+*.aab
