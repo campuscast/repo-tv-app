@@ -3,6 +3,7 @@ package com.campuscast.tvplayer.app
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.campuscast.tvplayer.core.i18n.I18n
 import com.campuscast.tvplayer.core.model.ActivationCodeResponse
 import com.campuscast.tvplayer.core.model.ActivationState
 import com.campuscast.tvplayer.core.model.AppConfig
@@ -33,6 +34,10 @@ class PlayerViewModel(
 
     private var activationPollJob: Job? = null
     private var activationCountdownJob: Job? = null
+
+    private fun t(key: String, params: Map<String, String> = emptyMap()): String {
+        return I18n.t(repository.config.value.locale, key, params)
+    }
 
     init {
         observeRepository()
@@ -100,7 +105,7 @@ class PlayerViewModel(
         viewModelScope.launch {
             val formatted = formatDeviceId(deviceIdRaw)
             if (!isValidDeviceId(formatted)) {
-                _uiState.value = _uiState.value.copy(setupError = "Player ID must be XXXX-XXXX-XXXX-XXXX")
+                _uiState.value = _uiState.value.copy(setupError = t("setup.errorFormat"))
                 return@launch
             }
 
@@ -115,7 +120,7 @@ class PlayerViewModel(
         viewModelScope.launch {
             val deviceId = repository.config.value.deviceId
             if (deviceId.isNullOrBlank()) {
-                _uiState.value = _uiState.value.copy(activationError = "Device ID is not set")
+                _uiState.value = _uiState.value.copy(activationError = t("activation.noDeviceId"))
                 return@launch
             }
 
@@ -131,7 +136,7 @@ class PlayerViewModel(
             }.onFailure { error ->
                 _uiState.value = _uiState.value.copy(
                     activationPhase = ActivationPhase.ERROR,
-                    activationError = error.message ?: "Failed to request activation code",
+                    activationError = error.message ?: t("activation.failed"),
                 )
             }
         }
@@ -187,13 +192,15 @@ class PlayerViewModel(
                 }.getOrNull()
 
                 if (credentials?.deviceToken != null) {
-                    activationPollJob?.cancel()
                     activationCountdownJob?.cancel()
                     _uiState.value = _uiState.value.copy(activationPhase = ActivationPhase.ACTIVATED)
                     repository.startRuntime(viewModelScope)
-                    repository.syncReleaseAndManifest()
+                    runCatching { repository.syncReleaseAndManifest() }
                     delay(800)
-                    _uiState.value = _uiState.value.copy(screen = AppScreen.Playback)
+                    _uiState.value = _uiState.value.copy(
+                        screen = AppScreen.Playback,
+                        activationError = null,
+                    )
                     break
                 }
 
@@ -211,7 +218,7 @@ class PlayerViewModel(
                 if (left == 0) {
                     _uiState.value = _uiState.value.copy(
                         activationPhase = ActivationPhase.ERROR,
-                        activationError = "Activation code expired. Request a new one.",
+                        activationError = t("activation.expired"),
                     )
                     break
                 }
@@ -228,9 +235,9 @@ class PlayerViewModel(
             _uiState.value = _uiState.value.copy(
                 isSyncing = false,
                 transientMessage = when {
-                    result == null -> "No active release"
-                    result.usedFallback -> "Using cached manifest"
-                    else -> "Sync complete"
+                    result == null -> t("status.noRelease")
+                    result.usedFallback -> t("status.cachedManifest")
+                    else -> t("status.syncComplete")
                 }
             )
         }
@@ -257,7 +264,14 @@ class PlayerViewModel(
             repository.saveConfig {
                 it.copy(apiBaseUrl = apiBaseUrl.trim(), mqttBrokerUrl = mqttBrokerUrl.trim())
             }
-            _uiState.value = _uiState.value.copy(transientMessage = "Settings saved")
+            _uiState.value = _uiState.value.copy(transientMessage = t("settings.savedToast"))
+        }
+    }
+
+    fun changeLocale(locale: String) {
+        viewModelScope.launch {
+            repository.saveConfig { it.copy(locale = I18n.normalizeLocale(locale)) }
+            _uiState.value = _uiState.value.copy(config = repository.config.value)
         }
     }
 

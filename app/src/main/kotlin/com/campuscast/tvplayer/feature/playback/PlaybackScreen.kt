@@ -17,15 +17,20 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import com.campuscast.tvplayer.core.i18n.I18n
 import com.campuscast.tvplayer.core.model.PlaybackState
 import com.campuscast.tvplayer.core.model.PlaybackStatus
 import com.campuscast.tvplayer.util.formatLocalDateTime
 
 @Composable
 fun PlaybackScreen(
+    locale: String,
     state: PlaybackState,
     onOpenStatus: () -> Unit,
 ) {
+    val resolvedLocale = I18n.normalizeLocale(locale)
+    val t = { key: String -> I18n.t(resolvedLocale, key) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -44,11 +49,15 @@ fun PlaybackScreen(
     ) {
         when {
             state.status == PlaybackStatus.IDLE || state.currentSlot == null -> {
-                IdlePlaybackView(nextSlotStart = state.nextSlot?.startTime)
+                IdlePlaybackView(locale = resolvedLocale, nextSlotStart = state.nextSlot?.startTime)
             }
 
             state.status == PlaybackStatus.ERROR -> {
-                IdlePlaybackView(nextSlotStart = null, subtitle = state.errors.lastOrNull() ?: "Playback error")
+                IdlePlaybackView(
+                    locale = resolvedLocale,
+                    nextSlotStart = null,
+                    subtitle = state.errors.lastOrNull() ?: t("playback.error"),
+                )
             }
 
             else -> {
@@ -58,7 +67,7 @@ fun PlaybackScreen(
 
         if (state.status == PlaybackStatus.OFFLINE) {
             Text(
-                text = "Offline - using cached content",
+                text = t("playback.offlineCached"),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 24.dp)
@@ -72,27 +81,37 @@ fun PlaybackScreen(
 }
 
 @Composable
-private fun IdlePlaybackView(nextSlotStart: String?, subtitle: String = "CampusCast Player") {
+private fun IdlePlaybackView(
+    locale: String,
+    nextSlotStart: String?,
+    subtitle: String? = null,
+) {
+    val t = { key: String -> I18n.t(locale, key) }
+    val displaySubtitle = subtitle ?: t("playback.idleSubtitle")
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = subtitle,
+            text = displaySubtitle,
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (nextSlotStart != null) {
             Text(
-                text = "Next slot: ${formatLocalDateTime(nextSlotStart)}",
+                text = I18n.t(
+                    locale,
+                    "playback.nextSlot",
+                    mapOf("time" to formatLocalDateTime(nextSlotStart)),
+                ),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp),
             )
         }
         Text(
-            text = "Press UP for service menu",
+            text = t("playback.openMenu"),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(top = 22.dp),

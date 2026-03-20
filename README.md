@@ -2,6 +2,12 @@
 
 Android TV native player implementing the same runtime pipeline as `repo-desktop-app` with TV-adapted UX.
 
+## Android support
+
+- Minimum supported Android version: **Android 9 (API 28)**
+- Target Android version: **API 35**
+- Validated compatibility intent: **Android 9 / 10 / 11+**
+
 ## Stack
 
 - Kotlin
@@ -40,4 +46,40 @@ Android TV native player implementing the same runtime pipeline as `repo-desktop
 ## Notes
 
 - MQTT release push is intentionally not implemented yet; release sync currently runs by periodic pull (30s) with identical fallback behavior.
-- Gradle wrapper is not included in this workspace snapshot; add wrapper or run with local Gradle toolchain.
+
+## Build installable APK (Android 9+ sideload)
+
+Main command:
+
+```bash
+./gradlew assembleAndroid9PlusSideloadApk
+```
+
+Output artifact:
+
+- `builds/campuscast-tv-player-android9plus-release.apk` (signed, installable)
+
+The task always builds `:app:assembleRelease` first, then copies the signed APK to `builds/`.
+
+## Signing behavior
+
+- By default, `release` uses the Android debug signing key so the produced APK is installable out of the box for local sideload testing.
+- For stable release signing (recommended for repeated updates on real devices), set these Gradle properties:
+  - `CAMPUSCAST_RELEASE_STORE_FILE`
+  - `CAMPUSCAST_RELEASE_STORE_PASSWORD`
+  - `CAMPUSCAST_RELEASE_KEY_ALIAS`
+  - `CAMPUSCAST_RELEASE_KEY_PASSWORD`
+
+Example (`~/.gradle/gradle.properties`):
+
+```properties
+CAMPUSCAST_RELEASE_STORE_FILE=/absolute/path/to/release.keystore
+CAMPUSCAST_RELEASE_STORE_PASSWORD=***
+CAMPUSCAST_RELEASE_KEY_ALIAS=campuscast-tv
+CAMPUSCAST_RELEASE_KEY_PASSWORD=***
+```
+
+## Important install note
+
+- `app-release-unsigned.apk` is not installable on Android devices.
+- If device already has the app signed with a different key, uninstall old app once before installing a newly signed build.

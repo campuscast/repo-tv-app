@@ -265,12 +265,13 @@ data class CacheStatus(
 enum class LinkState {
     CONNECTED,
     CONNECTING,
+    NOT_INITIALIZED,
     DISCONNECTED,
 }
 
 data class ConnectionStatus(
     val backend: LinkState = LinkState.DISCONNECTED,
-    val mqtt: LinkState = LinkState.DISCONNECTED,
+    val mqtt: LinkState = LinkState.NOT_INITIALIZED,
     val lastError: String? = null,
 )
 

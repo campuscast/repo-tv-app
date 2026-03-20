@@ -19,6 +19,7 @@ class SetupScreenTest {
             CampusCastTheme {
                 SetupScreen(
                     config = AppConfig(),
+                    locale = "en",
                     error = null,
                     onSubmit = { _, _, _ -> },
                 )

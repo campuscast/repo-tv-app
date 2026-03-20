@@ -10,6 +10,7 @@ local.properties
 
 # Build and cache artifacts
 .gradle/
+.gradle-user-home/
 build/
 builds/
 **/build/

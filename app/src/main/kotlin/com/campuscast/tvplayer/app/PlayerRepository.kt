@@ -19,6 +19,7 @@ import com.campuscast.tvplayer.core.model.PlayerHealthSnapshot
 import com.campuscast.tvplayer.core.model.Release
 import com.campuscast.tvplayer.core.model.ReleaseManifest
 import com.campuscast.tvplayer.core.network.BackendClient
+import com.campuscast.tvplayer.core.network.MqttConnectionMonitor
 import com.campuscast.tvplayer.core.playback.ManifestValidator
 import com.campuscast.tvplayer.core.playback.PlaybackEvaluator
 import com.campuscast.tvplayer.core.storage.AppConfigStore
@@ -44,6 +45,7 @@ class PlayerRepository(
     private val configStore: AppConfigStore,
     private val manifestStore: ManifestStore,
     private val backendClient: BackendClient,
+    private val mqttConnectionMonitor: MqttConnectionMonitor,
     private val cacheManager: ContentCacheManager,
     private val evaluator: PlaybackEvaluator,
     private val heartbeatManager: HeartbeatManager,
@@ -51,6 +53,7 @@ class PlayerRepository(
     private val syncMutex = Mutex()
     private var playbackTickerJob: Job? = null
     private var syncLoopJob: Job? = null
+    private var mqttStatusJob: Job? = null
     private var lastManifest: ReleaseManifest? = null
     private val downloadInFlight = mutableSetOf<String>()
 
@@ -89,12 +92,15 @@ class PlayerRepository(
         if (_config.value.activationState == ActivationState.ACTIVATED) {
             startSyncLoop(scope)
             startHeartbeat(scope)
+            startMqttMonitoring(scope)
         }
     }
 
     fun stopRuntime() {
         playbackTickerJob?.cancel()
         syncLoopJob?.cancel()
+        mqttStatusJob?.cancel()
+        mqttConnectionMonitor.stop()
         heartbeatManager.stop()
     }
 
@@ -143,6 +149,7 @@ class PlayerRepository(
         }
         _config.value = updated
         _connection.value = ConnectionStatus()
+        mqttConnectionMonitor.stop()
         heartbeatManager.stop()
         return updated
     }
@@ -230,7 +237,11 @@ class PlayerRepository(
         _config.value = updated
         _connection.value = _connection.value.copy(
             backend = LinkState.CONNECTED,
-            mqtt = LinkState.DISCONNECTED,
+            mqtt = if (credentials.mqttClientId.isNullOrBlank()) {
+                LinkState.NOT_INITIALIZED
+            } else {
+                LinkState.CONNECTING
+            },
             lastError = null,
         )
         return credentials
@@ -412,6 +423,24 @@ class PlayerRepository(
         }
     }
 
+    private fun startMqttMonitoring(scope: CoroutineScope) {
+        mqttStatusJob?.cancel()
+        mqttStatusJob = scope.launch {
+            mqttConnectionMonitor.status.collect { snapshot ->
+                val nextError = when {
+                    snapshot.lastError != null -> snapshot.lastError
+                    _connection.value.backend == LinkState.CONNECTED -> null
+                    else -> _connection.value.lastError
+                }
+                _connection.value = _connection.value.copy(
+                    mqtt = snapshot.state,
+                    lastError = nextError,
+                )
+            }
+        }
+        mqttConnectionMonitor.start(_config.value)
+    }
+
     fun lookupLocalAsset(assetId: String): String? {
         val manifest = _manifest.value ?: return null
         val asset = manifest.assets.firstOrNull { it.assetId == assetId } ?: return null
@@ -443,6 +472,12 @@ class PlayerRepository(
     suspend fun saveConfig(update: (AppConfig) -> AppConfig): AppConfig {
         val updated = configStore.saveConfig(update)
         _config.value = updated
+        if (updated.activationState == ActivationState.ACTIVATED) {
+            mqttConnectionMonitor.start(updated)
+        } else {
+            mqttConnectionMonitor.stop()
+            _connection.value = _connection.value.copy(mqtt = LinkState.NOT_INITIALIZED)
+        }
         return updated
     }
 

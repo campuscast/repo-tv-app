@@ -71,14 +71,17 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
 
     Box(modifier = Modifier.fillMaxSize()) {
         when (uiState.screen) {
-            AppScreen.Boot -> BootScreen()
+            AppScreen.Boot -> BootScreen(locale = uiState.config.locale)
             AppScreen.Setup -> SetupScreen(
                 config = uiState.config,
+                locale = uiState.config.locale,
                 error = uiState.setupError,
                 onSubmit = viewModel::submitSetup,
+                onChangeLocale = viewModel::changeLocale,
             )
 
             AppScreen.Activation -> ActivationScreen(
+                locale = uiState.config.locale,
                 deviceId = uiState.config.deviceId,
                 code = uiState.activationCode,
                 expiresSeconds = uiState.activationExpiresSeconds,
@@ -88,11 +91,13 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
             )
 
             AppScreen.Playback -> PlaybackScreen(
+                locale = uiState.config.locale,
                 state = uiState.playback,
                 onOpenStatus = viewModel::openStatus,
             )
 
             AppScreen.Status -> StatusScreen(
+                locale = uiState.config.locale,
                 config = uiState.config,
                 connection = uiState.connection,
                 playback = uiState.playback,
@@ -106,8 +111,10 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
             )
 
             AppScreen.Settings -> SettingsScreen(
+                locale = uiState.config.locale,
                 config = uiState.config,
                 onSave = viewModel::saveConnectionSettings,
+                onChangeLocale = viewModel::changeLocale,
                 onResetPlayer = viewModel::resetPlayer,
                 onBack = viewModel::backToPlayback,
             )

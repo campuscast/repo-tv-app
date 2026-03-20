@@ -5,15 +5,24 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val releaseStoreFileProp = providers.gradleProperty("CAMPUSCAST_RELEASE_STORE_FILE")
+val releaseStorePasswordProp = providers.gradleProperty("CAMPUSCAST_RELEASE_STORE_PASSWORD")
+val releaseKeyAliasProp = providers.gradleProperty("CAMPUSCAST_RELEASE_KEY_ALIAS")
+val releaseKeyPasswordProp = providers.gradleProperty("CAMPUSCAST_RELEASE_KEY_PASSWORD")
+val hasCustomReleaseSigning = releaseStoreFileProp.isPresent &&
+    releaseStorePasswordProp.isPresent &&
+    releaseKeyAliasProp.isPresent &&
+    releaseKeyPasswordProp.isPresent
+
 android {
     namespace = "com.campuscast.tvplayer"
     compileSdk = 35
 
     defaultConfig {
         applicationId = "com.campuscast.tvplayer"
-        minSdk = 24
+        minSdk = 28
         targetSdk = 35
-        versionCode = 1
+        versionCode = 2
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -22,9 +31,33 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasCustomReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFileProp.get())
+                storePassword = releaseStorePasswordProp.get()
+                keyAlias = releaseKeyAliasProp.get()
+                keyPassword = releaseKeyPasswordProp.get()
+
+                // Keep older and newer Android package verifiers happy for sideload installs.
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            // By default release becomes installable for Android TV sideloading.
+            // Custom release keystore can be provided via Gradle properties.
+            signingConfig = if (hasCustomReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -50,6 +83,11 @@ android {
     }
 
     packaging {
+        jniLibs {
+            // Some Android 9/10 TV firmwares fail to install APKs with extractNativeLibs=false.
+            // Legacy packaging keeps install behavior stable on older boxes.
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
@@ -78,6 +116,7 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
 
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")

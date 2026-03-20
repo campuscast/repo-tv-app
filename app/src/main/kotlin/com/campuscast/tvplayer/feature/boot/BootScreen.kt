@@ -13,9 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.campuscast.tvplayer.core.i18n.I18n
 
 @Composable
-fun BootScreen() {
+fun BootScreen(locale: String = "en") {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -24,19 +25,19 @@ fun BootScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "CampusCast",
+            text = I18n.t(locale, "boot.title"),
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.SemiBold,
             fontSize = 54.sp,
         )
         Text(
-            text = "TV Player",
+            text = I18n.t(locale, "boot.subtitle"),
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.primary,
         )
         CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
         Text(
-            text = "Initializing player...",
+            text = I18n.t(locale, "boot.initializing"),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 12.dp),

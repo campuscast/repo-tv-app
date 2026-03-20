@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.campuscast.tvplayer.core.i18n.I18n
 import com.campuscast.tvplayer.core.model.ActivationState
 import com.campuscast.tvplayer.core.model.AppConfig
 import kotlinx.coroutines.flow.Flow
@@ -72,7 +73,7 @@ class AppConfigStore(private val context: Context) {
             groupName = prefs[GROUP_NAME],
             pendingActivationCode = prefs[PENDING_ACTIVATION_CODE],
             pendingActivationRequestedAt = prefs[PENDING_ACTIVATION_REQUESTED_AT],
-            locale = prefs[LOCALE] ?: "en",
+            locale = I18n.normalizeLocale(prefs[LOCALE]),
             theme = prefs[THEME] ?: "dark",
         )
     }
@@ -95,7 +96,7 @@ class AppConfigStore(private val context: Context) {
         putOrRemove(prefs, GROUP_NAME, config.groupName)
         putOrRemove(prefs, PENDING_ACTIVATION_CODE, config.pendingActivationCode)
         putOrRemove(prefs, PENDING_ACTIVATION_REQUESTED_AT, config.pendingActivationRequestedAt)
-        prefs[LOCALE] = config.locale
+        prefs[LOCALE] = I18n.normalizeLocale(config.locale)
         prefs[THEME] = config.theme
     }
 
