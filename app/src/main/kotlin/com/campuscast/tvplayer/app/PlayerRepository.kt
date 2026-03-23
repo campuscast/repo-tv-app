@@ -34,9 +34,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "PlayerRepository"
 
@@ -55,7 +57,7 @@ class PlayerRepository(
     private var syncLoopJob: Job? = null
     private var mqttStatusJob: Job? = null
     private var lastManifest: ReleaseManifest? = null
-    private val downloadInFlight = mutableSetOf<String>()
+    private val downloadInFlight = ConcurrentHashMap.newKeySet<String>()
 
     private val _config = MutableStateFlow(AppConfig())
     val config: StateFlow<AppConfig> = _config.asStateFlow()
@@ -364,18 +366,22 @@ class PlayerRepository(
     private fun startPlaybackTicker(scope: CoroutineScope) {
         playbackTickerJob?.cancel()
         playbackTickerJob = scope.launch(Dispatchers.Default) {
-            while (true) {
-                val manifest = _manifest.value
-                val nextState = evaluator.evaluate(manifest, ::lookupLocalAsset)
-                _playback.value = if (_connection.value.backend == LinkState.DISCONNECTED && nextState.status == PlaybackStatus.PLAYING) {
-                    nextState.copy(status = PlaybackStatus.OFFLINE)
-                } else {
-                    nextState
-                }
+            while (isActive) {
+                runCatching {
+                    val manifest = _manifest.value
+                    val nextState = evaluator.evaluate(manifest, ::lookupLocalAsset)
+                    _playback.value = if (_connection.value.backend == LinkState.DISCONNECTED && nextState.status == PlaybackStatus.PLAYING) {
+                        nextState.copy(status = PlaybackStatus.OFFLINE)
+                    } else {
+                        nextState
+                    }
 
-                val current = _playback.value.currentAsset
-                if (current != null) {
-                    maybeDownloadCurrentAsset(scope, current.assetId)
+                    val current = _playback.value.currentAsset
+                    if (current != null) {
+                        maybeDownloadCurrentAsset(scope, current.assetId)
+                    }
+                }.onFailure { error ->
+                    appendError("Playback ticker failed: ${error.message ?: "unknown error"}")
                 }
                 delay(1_000)
             }
@@ -403,8 +409,12 @@ class PlayerRepository(
     private fun startSyncLoop(scope: CoroutineScope) {
         syncLoopJob?.cancel()
         syncLoopJob = scope.launch {
-            while (true) {
-                syncReleaseAndManifest()
+            while (isActive) {
+                runCatching {
+                    syncReleaseAndManifest()
+                }.onFailure { error ->
+                    appendError("Sync loop failed: ${error.message ?: "unknown error"}")
+                }
                 delay(30_000)
             }
         }

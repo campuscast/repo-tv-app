@@ -93,6 +93,8 @@ class BackendClient(
         )
     }
 
+    // TODO(cms-preview): add `/player/preview` upload parity for Android TV player.
+
     private suspend inline fun <reified T> getJson(url: String, token: String?): T {
         return withContext(Dispatchers.IO) {
             val request = Request.Builder()

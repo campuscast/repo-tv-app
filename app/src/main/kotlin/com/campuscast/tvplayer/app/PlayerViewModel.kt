@@ -79,25 +79,34 @@ class PlayerViewModel(
 
     private fun bootstrap() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(screen = AppScreen.Boot, isBusy = true)
-            repository.bootstrap()
-            val config = repository.config.value
+            _uiState.value = _uiState.value.copy(screen = AppScreen.Boot, isBusy = true, setupError = null)
 
-            if (config.deviceId.isNullOrBlank()) {
-                _uiState.value = _uiState.value.copy(screen = AppScreen.Setup, isBusy = false)
-                return@launch
+            runCatching {
+                repository.bootstrap()
+                val config = repository.config.value
+
+                if (config.deviceId.isNullOrBlank()) {
+                    _uiState.value = _uiState.value.copy(screen = AppScreen.Setup, isBusy = false)
+                    return@runCatching
+                }
+
+                if (config.activationState != ActivationState.ACTIVATED) {
+                    _uiState.value = _uiState.value.copy(screen = AppScreen.Activation, isBusy = false)
+                    tryResumePendingActivation()
+                    return@runCatching
+                }
+
+                repository.startRuntime(viewModelScope)
+                repository.revalidateDevice()
+                repository.syncReleaseAndManifest()
+                _uiState.value = _uiState.value.copy(screen = AppScreen.Playback, isBusy = false)
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    screen = AppScreen.Setup,
+                    isBusy = false,
+                    setupError = error.message ?: t("playback.error"),
+                )
             }
-
-            if (config.activationState != ActivationState.ACTIVATED) {
-                _uiState.value = _uiState.value.copy(screen = AppScreen.Activation, isBusy = false)
-                tryResumePendingActivation()
-                return@launch
-            }
-
-            repository.startRuntime(viewModelScope)
-            repository.revalidateDevice()
-            repository.syncReleaseAndManifest()
-            _uiState.value = _uiState.value.copy(screen = AppScreen.Playback, isBusy = false)
         }
     }
 

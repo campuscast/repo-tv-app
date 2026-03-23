@@ -55,46 +55,53 @@ class MqttConnectionMonitor {
 
         stopInternal(LinkState.NOT_INITIALIZED)
 
-        val nextClient = MqttAsyncClient(serverUri, clientId)
-        client = nextClient
-        _status.value = MqttConnectionSnapshot(LinkState.CONNECTING)
+        runCatching {
+            val nextClient = MqttAsyncClient(serverUri, clientId)
+            client = nextClient
+            _status.value = MqttConnectionSnapshot(LinkState.CONNECTING)
 
-        nextClient.setCallback(object : MqttCallbackExtended {
-            override fun connectComplete(reconnect: Boolean, serverURI: String?) {
-                _status.value = MqttConnectionSnapshot(LinkState.CONNECTED)
+            nextClient.setCallback(object : MqttCallbackExtended {
+                override fun connectComplete(reconnect: Boolean, serverURI: String?) {
+                    _status.value = MqttConnectionSnapshot(LinkState.CONNECTED)
+                }
+
+                override fun connectionLost(cause: Throwable?) {
+                    _status.value = MqttConnectionSnapshot(
+                        state = LinkState.DISCONNECTED,
+                        lastError = cause?.message ?: "MQTT connection lost",
+                    )
+                }
+
+                override fun messageArrived(topic: String?, message: MqttMessage?) = Unit
+
+                override fun deliveryComplete(token: IMqttDeliveryToken?) = Unit
+            })
+
+            val options = MqttConnectOptions().apply {
+                isAutomaticReconnect = true
+                isCleanSession = true
+                connectionTimeout = 10
+                keepAliveInterval = 30
             }
 
-            override fun connectionLost(cause: Throwable?) {
-                _status.value = MqttConnectionSnapshot(
-                    state = LinkState.DISCONNECTED,
-                    lastError = cause?.message ?: "MQTT connection lost",
-                )
-            }
+            nextClient.connect(options, null, object : IMqttActionListener {
+                override fun onSuccess(asyncActionToken: IMqttToken?) {
+                    _status.value = MqttConnectionSnapshot(LinkState.CONNECTED)
+                }
 
-            override fun messageArrived(topic: String?, message: MqttMessage?) = Unit
-
-            override fun deliveryComplete(token: IMqttDeliveryToken?) = Unit
-        })
-
-        val options = MqttConnectOptions().apply {
-            isAutomaticReconnect = true
-            isCleanSession = true
-            connectionTimeout = 10
-            keepAliveInterval = 30
+                override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                    _status.value = MqttConnectionSnapshot(
+                        state = LinkState.DISCONNECTED,
+                        lastError = exception?.message ?: "MQTT connect failed",
+                    )
+                }
+            })
+        }.onFailure { error ->
+            stopInternal(
+                state = LinkState.DISCONNECTED,
+                error = error.message ?: "MQTT initialization failed",
+            )
         }
-
-        nextClient.connect(options, null, object : IMqttActionListener {
-            override fun onSuccess(asyncActionToken: IMqttToken?) {
-                _status.value = MqttConnectionSnapshot(LinkState.CONNECTED)
-            }
-
-            override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
-                _status.value = MqttConnectionSnapshot(
-                    state = LinkState.DISCONNECTED,
-                    lastError = exception?.message ?: "MQTT connect failed",
-                )
-            }
-        })
     }
 
     @Synchronized
