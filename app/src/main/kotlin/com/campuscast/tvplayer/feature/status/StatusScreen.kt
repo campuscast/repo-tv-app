@@ -28,6 +28,7 @@ import com.campuscast.tvplayer.core.i18n.I18n
 import com.campuscast.tvplayer.core.model.AppConfig
 import com.campuscast.tvplayer.core.model.CacheStatus
 import com.campuscast.tvplayer.core.model.ConnectionStatus
+import com.campuscast.tvplayer.core.model.CrashLogInfo
 import com.campuscast.tvplayer.core.model.HeartbeatStatus
 import com.campuscast.tvplayer.core.model.LinkState
 import com.campuscast.tvplayer.core.model.PlaybackState
@@ -42,6 +43,7 @@ fun StatusScreen(
     cache: CacheStatus,
     heartbeat: HeartbeatStatus,
     recentErrors: List<String>,
+    latestCrash: CrashLogInfo?,
     isSyncing: Boolean,
     onSyncNow: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -147,6 +149,27 @@ fun StatusScreen(
             ValueRow(t("status.lastPrefetch"), formatLocalDateTime(cache.lastPrefetchAt))
             ValueRow(t("status.lastCleanup"), formatLocalDateTime(cache.lastCleanupAt))
             ValueRow(t("status.lastCacheError"), cache.lastError ?: "-")
+        }
+
+        if (latestCrash != null) {
+            StatusCard(title = t("diagnostics.lastCrash")) {
+                ValueRow(t("diagnostics.lastCrashAt"), formatLocalDateTime(latestCrash.capturedAtIso))
+                ValueRow(t("diagnostics.lastCrashFile"), latestCrash.filePath)
+                Text(
+                    text = latestCrash.summary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Text(
+                    text = latestCrash.preview,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
         }
 
         if (recentErrors.isNotEmpty()) {

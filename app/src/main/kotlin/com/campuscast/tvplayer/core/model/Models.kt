@@ -294,6 +294,13 @@ data class PlayerHealthSnapshot(
     val lastError: String?,
 )
 
+data class CrashLogInfo(
+    val filePath: String,
+    val capturedAtIso: String,
+    val summary: String,
+    val preview: String,
+)
+
 @Serializable
 data class TelemetryDisplay(
     val id: String,

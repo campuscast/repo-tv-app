@@ -9,6 +9,7 @@ import com.campuscast.tvplayer.core.model.ActivationState
 import com.campuscast.tvplayer.core.model.AppConfig
 import com.campuscast.tvplayer.core.model.CacheStatus
 import com.campuscast.tvplayer.core.model.ConnectionStatus
+import com.campuscast.tvplayer.core.model.CrashLogInfo
 import com.campuscast.tvplayer.core.model.HeartbeatStatus
 import com.campuscast.tvplayer.core.model.PlaybackState
 import com.campuscast.tvplayer.core.model.PlayerHealthSnapshot
@@ -73,6 +74,11 @@ class PlayerViewModel(
         viewModelScope.launch {
             repository.recentErrors.collect { errors ->
                 _uiState.value = _uiState.value.copy(recentErrors = errors)
+            }
+        }
+        viewModelScope.launch {
+            repository.latestCrash.collect { crash ->
+                _uiState.value = _uiState.value.copy(latestCrash = crash)
             }
         }
     }
@@ -354,4 +360,5 @@ data class PlayerUiState(
     val cache: CacheStatus = CacheStatus(),
     val heartbeat: HeartbeatStatus = HeartbeatStatus(),
     val recentErrors: List<String> = emptyList(),
+    val latestCrash: CrashLogInfo? = null,
 )

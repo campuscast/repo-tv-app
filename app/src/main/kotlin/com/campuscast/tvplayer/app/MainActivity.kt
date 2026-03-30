@@ -102,6 +102,7 @@ private fun PlayerRoot(viewModel: PlayerViewModel) {
                 cache = uiState.cache,
                 heartbeat = uiState.heartbeat,
                 recentErrors = uiState.recentErrors,
+                latestCrash = uiState.latestCrash,
                 isSyncing = uiState.isSyncing,
                 onSyncNow = viewModel::syncNow,
                 onOpenSettings = viewModel::openSettings,

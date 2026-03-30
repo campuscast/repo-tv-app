@@ -83,3 +83,34 @@ CAMPUSCAST_RELEASE_KEY_PASSWORD=***
 
 - `app-release-unsigned.apk` is not installable on Android devices.
 - If device already has the app signed with a different key, uninstall old app once before installing a newly signed build.
+
+## Crash logs on device
+
+- The app now persists uncaught JVM crashes into `crash-logs/`.
+- Preferred visible path on device/file manager:
+  - `/storage/emulated/0/Android/data/com.campuscast.tvplayer/files/crash-logs/latest-crash.txt`
+- Internal fallback path:
+  - `/data/user/0/com.campuscast.tvplayer/files/crash-logs/latest-crash.txt`
+- On next successful launch, the latest crash is also shown in the Status screen.
+
+### Capture system log with ADB
+
+1. Enable Developer Options and USB debugging (or ADB over network) on the TV box.
+2. Connect:
+
+```bash
+adb connect <tv-ip>:5555
+```
+
+3. Clear old log buffer, reproduce the crash, then dump the relevant lines:
+
+```bash
+adb logcat -c
+adb logcat AndroidRuntime:E *:S
+```
+
+4. Pull the persisted crash file if needed:
+
+```bash
+adb pull /storage/emulated/0/Android/data/com.campuscast.tvplayer/files/crash-logs/latest-crash.txt
+```

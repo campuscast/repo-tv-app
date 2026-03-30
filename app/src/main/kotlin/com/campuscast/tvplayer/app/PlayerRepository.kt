@@ -8,6 +8,7 @@ import com.campuscast.tvplayer.core.model.ActivationState
 import com.campuscast.tvplayer.core.model.AppConfig
 import com.campuscast.tvplayer.core.model.CacheStatus
 import com.campuscast.tvplayer.core.model.ConnectionStatus
+import com.campuscast.tvplayer.core.model.CrashLogInfo
 import com.campuscast.tvplayer.core.model.DeviceCredentials
 import com.campuscast.tvplayer.core.model.DevicePresenceStatus
 import com.campuscast.tvplayer.core.model.HeartbeatStatus
@@ -23,6 +24,7 @@ import com.campuscast.tvplayer.core.network.MqttConnectionMonitor
 import com.campuscast.tvplayer.core.playback.ManifestValidator
 import com.campuscast.tvplayer.core.playback.PlaybackEvaluator
 import com.campuscast.tvplayer.core.storage.AppConfigStore
+import com.campuscast.tvplayer.core.storage.CrashLogStore
 import com.campuscast.tvplayer.core.storage.ManifestStore
 import com.campuscast.tvplayer.core.telemetry.HeartbeatInputs
 import com.campuscast.tvplayer.core.telemetry.HeartbeatManager
@@ -46,6 +48,7 @@ class PlayerRepository(
     private val appContext: Context,
     private val configStore: AppConfigStore,
     private val manifestStore: ManifestStore,
+    private val crashLogStore: CrashLogStore,
     private val backendClient: BackendClient,
     private val mqttConnectionMonitor: MqttConnectionMonitor,
     private val cacheManager: ContentCacheManager,
@@ -74,16 +77,24 @@ class PlayerRepository(
     private val _cache = MutableStateFlow(CacheStatus())
     val cache: StateFlow<CacheStatus> = _cache.asStateFlow()
 
+    private val _latestCrash = MutableStateFlow<CrashLogInfo?>(null)
+    val latestCrash: StateFlow<CrashLogInfo?> = _latestCrash.asStateFlow()
+
     val heartbeat: StateFlow<HeartbeatStatus> = heartbeatManager.status
 
     private val _recentErrors = MutableStateFlow<List<String>>(emptyList())
     val recentErrors: StateFlow<List<String>> = _recentErrors.asStateFlow()
 
     suspend fun bootstrap() {
+        _latestCrash.value = crashLogStore.readLatestCrash()
         _config.value = configStore.getConfig()
         _manifest.value = manifestStore.getCurrentManifest()
         lastManifest = _manifest.value
         _cache.value = manifestStore.getCacheStatus()
+
+        _latestCrash.value?.let { crash ->
+            appendError("Previous crash: ${crash.summary} (${crash.filePath})")
+        }
 
         val evaluated = evaluator.evaluate(_manifest.value, ::lookupLocalAsset)
         _playback.value = evaluated
