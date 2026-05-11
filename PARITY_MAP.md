@@ -19,9 +19,9 @@
 ## Partial parity
 
 - Release update trigger:
-  - Desktop: MQTT push + immediate fetch
-  - TV: periodic sync pull every 30s
-  - Reason: lightweight runtime, fewer background dependencies for TV box stability
+  - Desktop: MQTT push + periodic fallback poll
+  - TV: MQTT push + periodic fallback poll
+  - Reason: both runtimes now converge on the same release propagation model; TV still keeps a lightweight pull fallback for missed pushes
 
 - Multi-display:
   - Desktop: control window + per-display playback windows

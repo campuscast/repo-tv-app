@@ -27,6 +27,15 @@ class ManifestStore(
         currentManifestFile.writeText(json.encodeToString(manifest))
     }
 
+    suspend fun clearManifests() = withContext(Dispatchers.IO) {
+        if (currentManifestFile.exists()) {
+            currentManifestFile.delete()
+        }
+        if (previousManifestFile.exists()) {
+            previousManifestFile.delete()
+        }
+    }
+
     suspend fun getCurrentManifest(): ReleaseManifest? = withContext(Dispatchers.IO) {
         readManifest(currentManifestFile)
     }

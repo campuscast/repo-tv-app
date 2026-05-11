@@ -167,6 +167,8 @@ data class PublicationSlidePayload(
     val body: String? = null,
     @SerialName("image_asset_id")
     val imageAssetId: String? = null,
+    @SerialName("external_url")
+    val externalUrl: String? = null,
     @SerialName("logo_asset_id")
     val logoAssetId: String? = null,
     val layout: String? = null,
@@ -319,6 +321,14 @@ data class TelemetryPayload(
     val playbackStatus: String,
     @SerialName("current_slot_id")
     val currentSlotId: String?,
+    @SerialName("current_publication_id")
+    val currentPublicationId: String? = null,
+    @SerialName("current_publication_title")
+    val currentPublicationTitle: String? = null,
+    @SerialName("current_publication_item_id")
+    val currentPublicationItemId: String? = null,
+    @SerialName("current_publication_item_title")
+    val currentPublicationItemTitle: String? = null,
     val errors: List<String>,
     val displays: List<TelemetryDisplay>,
     @SerialName("selected_displays")
@@ -332,6 +342,43 @@ data class TelemetryPayload(
     val cache: TelemetryCache,
     @SerialName("last_error")
     val lastError: String?,
+)
+
+@Serializable
+data class ScreenshotRequestCommand(
+    @SerialName("request_id")
+    val requestId: String,
+    @SerialName("display_id")
+    val displayId: String,
+    @SerialName("requested_at")
+    val requestedAt: String,
+)
+
+@Serializable
+data class TelemetryResponse(
+    @SerialName("screenshot_request")
+    val screenshotRequest: ScreenshotRequestCommand? = null,
+)
+
+@Serializable
+data class PreviewUploadPayload(
+    @SerialName("image_base64")
+    val imageBase64: String? = null,
+    @SerialName("image_url")
+    val imageUrl: String? = null,
+    @SerialName("mime_type")
+    val mimeType: String = "image/png",
+    @SerialName("captured_at")
+    val capturedAt: String,
+    val width: Int? = null,
+    val height: Int? = null,
+    val status: String,
+    @SerialName("display_id")
+    val displayId: String? = null,
+    @SerialName("display_label")
+    val displayLabel: String? = null,
+    @SerialName("request_id")
+    val requestId: String? = null,
 )
 
 @Serializable

@@ -18,11 +18,18 @@ class ContentCacheManager(
         manifest: ReleaseManifest,
         deviceToken: String,
     ): PrefetchResult {
+        return prefetchAssets(manifest.assets, deviceToken)
+    }
+
+    suspend fun prefetchAssets(
+        assets: List<ContentAsset>,
+        deviceToken: String,
+    ): PrefetchResult {
         val failed = mutableListOf<String>()
         var available = 0
         var downloaded = 0
 
-        manifest.assets.forEach { asset ->
+        assets.forEach { asset ->
             val cachedPath = localPath(asset)
             if (cachedPath.exists()) {
                 available += 1
@@ -40,7 +47,7 @@ class ContentCacheManager(
         }
 
         return PrefetchResult(
-            total = manifest.assets.size,
+            total = assets.size,
             available = available,
             downloaded = downloaded,
             failed = failed,
@@ -48,11 +55,15 @@ class ContentCacheManager(
     }
 
     suspend fun verifyManifestAssets(manifest: ReleaseManifest): VerificationResult {
+        return verifyAssets(manifest.assets)
+    }
+
+    suspend fun verifyAssets(assets: List<ContentAsset>): VerificationResult {
         return withContext(Dispatchers.IO) {
-            val missing = manifest.assets.filterNot { localPath(it).exists() }.map { it.assetId }
+            val missing = assets.filterNot { localPath(it).exists() }.map { it.assetId }
             VerificationResult(
-                total = manifest.assets.size,
-                available = manifest.assets.size - missing.size,
+                total = assets.size,
+                available = assets.size - missing.size,
                 missing = missing.size,
                 missingAssetIds = missing,
             )
@@ -60,8 +71,12 @@ class ContentCacheManager(
     }
 
     suspend fun cleanupUnusedAssets(manifest: ReleaseManifest): Int {
+        return cleanupUnusedAssetsForAssets(manifest.assets)
+    }
+
+    suspend fun cleanupUnusedAssetsForAssets(assets: List<ContentAsset>, missingAssets: Int = 0): Int {
         return withContext(Dispatchers.IO) {
-            val keepFiles = manifest.assets.map { localPath(it).name }.toSet()
+            val keepFiles = assets.map { localPath(it).name }.toSet()
             val contentDir = manifestStore.contentDir()
             val existingFiles = contentDir.listFiles()
                 ?.filter { it.isFile }
@@ -71,7 +86,7 @@ class ContentCacheManager(
             val decision = CachePolicy.buildCleanupDecision(
                 existingFiles = existingFiles,
                 expectedFiles = keepFiles,
-                missingAssets = 0,
+                missingAssets = missingAssets,
             )
             var removed = 0
             contentDir.listFiles()?.forEach { file ->

@@ -11,6 +11,7 @@ import com.campuscast.tvplayer.core.model.TelemetryCache
 import com.campuscast.tvplayer.core.model.TelemetryDisplay
 import com.campuscast.tvplayer.core.model.TelemetryPayload
 import com.campuscast.tvplayer.core.network.BackendClient
+import com.campuscast.tvplayer.core.preview.ScreenCaptureService
 import com.campuscast.tvplayer.util.nowIso
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -23,6 +24,7 @@ private const val TAG = "HeartbeatManager"
 
 class HeartbeatManager(
     private val backendClient: BackendClient,
+    private val screenCaptureService: ScreenCaptureService,
 ) {
     private var job: Job? = null
 
@@ -64,6 +66,10 @@ class HeartbeatManager(
             currentReleaseId = input.playbackState.releaseId,
             playbackStatus = input.playbackState.status.name.lowercase(),
             currentSlotId = input.playbackState.currentSlot?.slotId,
+            currentPublicationId = input.playbackState.currentPublication?.publicationId,
+            currentPublicationTitle = input.playbackState.currentPublication?.title,
+            currentPublicationItemId = input.playbackState.currentPublicationItem?.itemId,
+            currentPublicationItemTitle = input.playbackState.currentPublicationItem?.title,
             errors = input.playbackState.errors,
             displays = listOf(
                 TelemetryDisplay(
@@ -92,8 +98,14 @@ class HeartbeatManager(
 
         runCatching {
             backendClient.sendTelemetry(config.apiBaseUrl, config.deviceToken, payload)
-        }.onSuccess {
+        }.onSuccess { response ->
             _status.value = _status.value.copy(lastSuccessAt = nowIso(), lastError = null)
+            runCatching {
+                val preview = screenCaptureService.capturePreview(response.screenshotRequest)
+                backendClient.uploadPreview(config.apiBaseUrl, config.deviceToken, preview)
+            }.onFailure { error ->
+                Log.w(TAG, "Preview upload failed", error)
+            }
         }.onFailure { error ->
             _status.value = _status.value.copy(lastError = error.message)
             Log.w(TAG, "Telemetry send failed", error)

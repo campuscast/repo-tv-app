@@ -3,6 +3,8 @@ package com.campuscast.tvplayer.app
 import android.content.Context
 import android.util.Log
 import com.campuscast.tvplayer.core.cache.ContentCacheManager
+import com.campuscast.tvplayer.core.cache.RECOVERY_SYNC_INTERVAL_MS
+import com.campuscast.tvplayer.core.cache.RelevantAssetPolicy
 import com.campuscast.tvplayer.core.model.ActivationCodeResponse
 import com.campuscast.tvplayer.core.model.ActivationState
 import com.campuscast.tvplayer.core.model.AppConfig
@@ -58,7 +60,9 @@ class PlayerRepository(
     private val syncMutex = Mutex()
     private var playbackTickerJob: Job? = null
     private var syncLoopJob: Job? = null
+    private var cacheMaintenanceJob: Job? = null
     private var mqttStatusJob: Job? = null
+    private var mqttReleaseJob: Job? = null
     private var lastManifest: ReleaseManifest? = null
     private val downloadInFlight = ConcurrentHashMap.newKeySet<String>()
 
@@ -104,6 +108,7 @@ class PlayerRepository(
         startPlaybackTicker(scope)
         if (_config.value.activationState == ActivationState.ACTIVATED) {
             startSyncLoop(scope)
+            startCacheMaintenance(scope)
             startHeartbeat(scope)
             startMqttMonitoring(scope)
         }
@@ -112,7 +117,9 @@ class PlayerRepository(
     fun stopRuntime() {
         playbackTickerJob?.cancel()
         syncLoopJob?.cancel()
+        cacheMaintenanceJob?.cancel()
         mqttStatusJob?.cancel()
+        mqttReleaseJob?.cancel()
         mqttConnectionMonitor.stop()
         heartbeatManager.stop()
     }
@@ -271,8 +278,12 @@ class PlayerRepository(
             try {
                 val release = backendClient.fetchRelease(cfg.apiBaseUrl, deviceToken, deviceId)
                 if (release == null) {
-                    val fallback = lastKnownGood("No active release from backend")
-                    return@withLock fallback
+                    clearScheduleState()
+                    _connection.value = _connection.value.copy(
+                        backend = LinkState.CONNECTED,
+                        lastError = null,
+                    )
+                    return@withLock null
                 }
 
                 val result = applyReleaseManifest(cfg, release)
@@ -305,8 +316,9 @@ class PlayerRepository(
         val manifest = backendClient.fetchManifest(cfg.apiBaseUrl, token, release.releaseId)
         require(ManifestValidator.isUsable(manifest)) { "Manifest payload is invalid" }
 
-        val prefetch = cacheManager.prefetchManifestAssets(manifest, token)
-        val verify = cacheManager.verifyManifestAssets(manifest)
+        val selection = RelevantAssetPolicy.selectAssets(manifest)
+        val prefetch = cacheManager.prefetchAssets(selection.assets, token)
+        val verify = cacheManager.verifyAssets(selection.assets)
         val now = nowIso()
 
         if (prefetch.failed.isNotEmpty()) {
@@ -329,7 +341,7 @@ class PlayerRepository(
 
         var lastCleanupAt = _cache.value.lastCleanupAt
         if (verify.missing == 0) {
-            cacheManager.cleanupUnusedAssets(manifest)
+            cacheManager.cleanupUnusedAssetsForAssets(selection.assets, verify.missing)
             lastCleanupAt = now
         }
 
@@ -351,15 +363,21 @@ class PlayerRepository(
 
     private suspend fun lastKnownGood(reason: String): ManifestApplyResult? {
         val fallback = manifestStore.getLastKnownGoodManifest() ?: return null
-        val verify = cacheManager.verifyManifestAssets(fallback)
+        val selection = RelevantAssetPolicy.selectAssets(fallback)
+        val verify = cacheManager.verifyAssets(selection.assets)
         val now = nowIso()
+        var lastCleanupAt = _cache.value.lastCleanupAt
+        if (verify.missing == 0) {
+            cacheManager.cleanupUnusedAssetsForAssets(selection.assets, verify.missing)
+            lastCleanupAt = now
+        }
         val status = CacheStatus(
             currentReleaseId = fallback.releaseId,
             totalAssets = verify.total,
             availableAssets = verify.available,
             missingAssets = verify.missing,
             lastPrefetchAt = now,
-            lastCleanupAt = _cache.value.lastCleanupAt,
+            lastCleanupAt = lastCleanupAt,
             lastError = reason,
         )
         manifestStore.saveCacheStatus(status)
@@ -417,6 +435,20 @@ class PlayerRepository(
         }
     }
 
+    private fun startCacheMaintenance(scope: CoroutineScope) {
+        cacheMaintenanceJob?.cancel()
+        cacheMaintenanceJob = scope.launch {
+            while (isActive) {
+                runCatching {
+                    maintainCurrentCache()
+                }.onFailure { error ->
+                    appendError("Cache maintenance failed: ${error.message ?: "unknown error"}")
+                }
+                delay(30_000)
+            }
+        }
+    }
+
     private fun startSyncLoop(scope: CoroutineScope) {
         syncLoopJob?.cancel()
         syncLoopJob = scope.launch {
@@ -426,7 +458,7 @@ class PlayerRepository(
                 }.onFailure { error ->
                     appendError("Sync loop failed: ${error.message ?: "unknown error"}")
                 }
-                delay(30_000)
+                delay(computeNextSyncDelayMillis())
             }
         }
     }
@@ -459,7 +491,78 @@ class PlayerRepository(
                 )
             }
         }
+        mqttReleaseJob?.cancel()
+        mqttReleaseJob = scope.launch {
+            mqttConnectionMonitor.releaseUpdates.collect {
+                runCatching {
+                    syncReleaseAndManifest()
+                }.onFailure { error ->
+                    appendError("MQTT-triggered sync failed: ${error.message ?: "unknown error"}")
+                }
+            }
+        }
         mqttConnectionMonitor.start(_config.value)
+    }
+
+    private suspend fun maintainCurrentCache() {
+        syncMutex.withLock {
+            val manifest = _manifest.value ?: return@withLock
+            val token = _config.value.deviceToken ?: return@withLock
+            val selection = RelevantAssetPolicy.selectAssets(manifest)
+            val prefetch = cacheManager.prefetchAssets(selection.assets, token)
+            val verify = cacheManager.verifyAssets(selection.assets)
+            val now = nowIso()
+            var lastCleanupAt = _cache.value.lastCleanupAt
+            if (verify.missing == 0) {
+                cacheManager.cleanupUnusedAssetsForAssets(selection.assets, verify.missing)
+                lastCleanupAt = now
+            }
+
+            val cacheStatus = CacheStatus(
+                currentReleaseId = manifest.releaseId,
+                totalAssets = verify.total,
+                availableAssets = verify.available,
+                missingAssets = verify.missing,
+                lastPrefetchAt = now,
+                lastCleanupAt = lastCleanupAt,
+                lastError = prefetch.failed.firstOrNull()
+                    ?: if (verify.missing > 0) "Missing ${verify.missing}/${verify.total} assets" else null,
+            )
+            manifestStore.saveCacheStatus(cacheStatus)
+            _cache.value = cacheStatus
+        }
+    }
+
+    private suspend fun clearScheduleState() {
+        val now = nowIso()
+        manifestStore.clearManifests()
+        cacheManager.cleanupUnusedAssetsForAssets(emptyList(), 0)
+        val updatedConfig = configStore.saveConfig {
+            it.copy(lastSyncAt = now)
+        }
+        _config.value = updatedConfig
+        _manifest.value = null
+        lastManifest = null
+        _playback.value = evaluator.evaluate(null, ::lookupLocalAsset)
+        val cacheStatus = CacheStatus(
+            currentReleaseId = null,
+            totalAssets = 0,
+            availableAssets = 0,
+            missingAssets = 0,
+            lastPrefetchAt = now,
+            lastCleanupAt = now,
+            lastError = null,
+        )
+        manifestStore.saveCacheStatus(cacheStatus)
+        _cache.value = cacheStatus
+    }
+
+    private fun computeNextSyncDelayMillis(): Long {
+        if (_connection.value.backend == LinkState.DISCONNECTED) {
+            return RECOVERY_SYNC_INTERVAL_MS
+        }
+        val manifest = _manifest.value ?: return RECOVERY_SYNC_INTERVAL_MS
+        return RelevantAssetPolicy.computeSyncDelayMs(manifest)
     }
 
     fun lookupLocalAsset(assetId: String): String? {

@@ -5,6 +5,7 @@ import com.campuscast.tvplayer.core.cache.ContentCacheManager
 import com.campuscast.tvplayer.core.network.BackendClient
 import com.campuscast.tvplayer.core.network.MqttConnectionMonitor
 import com.campuscast.tvplayer.core.playback.PlaybackEvaluator
+import com.campuscast.tvplayer.core.preview.ScreenCaptureService
 import com.campuscast.tvplayer.core.storage.AppConfigStore
 import com.campuscast.tvplayer.core.storage.CrashLogStore
 import com.campuscast.tvplayer.core.storage.ManifestStore
@@ -31,7 +32,8 @@ class AppContainer(context: Context) {
     val mqttConnectionMonitor: MqttConnectionMonitor by lazy { MqttConnectionMonitor() }
     val cacheManager: ContentCacheManager by lazy { ContentCacheManager(httpClient, manifestStore) }
     val playbackEvaluator: PlaybackEvaluator by lazy { PlaybackEvaluator() }
-    val heartbeatManager: HeartbeatManager by lazy { HeartbeatManager(backendClient) }
+    val screenCaptureService: ScreenCaptureService by lazy { ScreenCaptureService() }
+    val heartbeatManager: HeartbeatManager by lazy { HeartbeatManager(backendClient, screenCaptureService) }
 
     val playerRepository: PlayerRepository by lazy {
         PlayerRepository(

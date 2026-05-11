@@ -4,9 +4,11 @@ import com.campuscast.tvplayer.core.model.ActivationCodeResponse
 import com.campuscast.tvplayer.core.model.DeviceCredentials
 import com.campuscast.tvplayer.core.model.DeviceInfo
 import com.campuscast.tvplayer.core.model.DevicePresenceStatus
+import com.campuscast.tvplayer.core.model.PreviewUploadPayload
 import com.campuscast.tvplayer.core.model.Release
 import com.campuscast.tvplayer.core.model.ReleaseManifest
 import com.campuscast.tvplayer.core.model.TelemetryPayload
+import com.campuscast.tvplayer.core.model.TelemetryResponse
 import com.campuscast.tvplayer.core.storage.appJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -84,16 +86,22 @@ class BackendClient(
         )
     }
 
-    suspend fun sendTelemetry(apiBaseUrl: String, deviceToken: String, payload: TelemetryPayload) {
-        postJson<TelemetryPayload, Unit>(
+    suspend fun sendTelemetry(apiBaseUrl: String, deviceToken: String, payload: TelemetryPayload): TelemetryResponse {
+        return postJson<TelemetryPayload, TelemetryResponse>(
             "$apiBaseUrl/player/telemetry",
+            payload,
+            token = deviceToken,
+        )
+    }
+
+    suspend fun uploadPreview(apiBaseUrl: String, deviceToken: String, payload: PreviewUploadPayload) {
+        postJson<PreviewUploadPayload, Unit>(
+            "$apiBaseUrl/player/preview",
             payload,
             token = deviceToken,
             expectBody = false,
         )
     }
-
-    // TODO(cms-preview): add `/player/preview` upload parity for Android TV player.
 
     private suspend inline fun <reified T> getJson(url: String, token: String?): T {
         return withContext(Dispatchers.IO) {

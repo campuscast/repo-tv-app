@@ -3,6 +3,9 @@ package com.campuscast.tvplayer.feature.playback
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -85,9 +88,21 @@ fun PlaybackSurface(state: PlaybackState) {
 @Composable
 private fun CustomSlideSurface(state: PlaybackState) {
     val slide = state.currentPublicationItem?.slide
+    val externalUrl = remember(slide?.externalUrl) {
+        slide?.externalUrl
+            ?.trim()
+            ?.takeIf { value ->
+                value.startsWith("https://", ignoreCase = true) || value.startsWith("http://", ignoreCase = true)
+            }
+    }
     val bgColor = remember(slide?.background) {
         runCatching { Color(android.graphics.Color.parseColor(slide?.background ?: "#111827")) }
             .getOrDefault(Color(0xFF111827))
+    }
+
+    if (!externalUrl.isNullOrBlank()) {
+        ExternalWebSlideSurface(url = externalUrl)
+        return
     }
 
     Column(
@@ -155,6 +170,33 @@ private fun AssetImageSurface(path: String?) {
         contentDescription = "Playback image",
         contentScale = ContentScale.Fit,
         modifier = Modifier.fillMaxSize(),
+    )
+}
+
+@Composable
+private fun ExternalWebSlideSurface(url: String) {
+    AndroidView(
+        factory = { context ->
+            WebView(context).apply {
+                setBackgroundColor(android.graphics.Color.BLACK)
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+                settings.builtInZoomControls = false
+                settings.displayZoomControls = false
+                settings.mediaPlaybackRequiresUserGesture = false
+                webChromeClient = WebChromeClient()
+                webViewClient = WebViewClient()
+                loadUrl(url)
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+        update = { webView ->
+            if (webView.url != url) {
+                webView.loadUrl(url)
+            }
+        },
     )
 }
 

@@ -2,7 +2,9 @@ package com.campuscast.tvplayer.core.network
 
 import com.campuscast.tvplayer.core.model.AppConfig
 import com.campuscast.tvplayer.core.model.LinkState
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.eclipse.paho.client.mqttv3.IMqttActionListener
@@ -22,8 +24,11 @@ data class MqttConnectionSnapshot(
 class MqttConnectionMonitor {
     private val _status = MutableStateFlow(MqttConnectionSnapshot())
     val status: StateFlow<MqttConnectionSnapshot> = _status.asStateFlow()
+    private val _releaseUpdates = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val releaseUpdates: SharedFlow<String> = _releaseUpdates
 
     private var client: MqttAsyncClient? = null
+    private var subscribedTopicPrefix: String? = null
 
     @Synchronized
     fun start(config: AppConfig) {
@@ -58,11 +63,13 @@ class MqttConnectionMonitor {
         runCatching {
             val nextClient = MqttAsyncClient(serverUri, clientId)
             client = nextClient
+            subscribedTopicPrefix = config.mqttTopicPrefix?.trim().orEmpty()
             _status.value = MqttConnectionSnapshot(LinkState.CONNECTING)
 
             nextClient.setCallback(object : MqttCallbackExtended {
                 override fun connectComplete(reconnect: Boolean, serverURI: String?) {
                     _status.value = MqttConnectionSnapshot(LinkState.CONNECTED)
+                    subscribeToReleaseTopic()
                 }
 
                 override fun connectionLost(cause: Throwable?) {
@@ -72,7 +79,11 @@ class MqttConnectionMonitor {
                     )
                 }
 
-                override fun messageArrived(topic: String?, message: MqttMessage?) = Unit
+                override fun messageArrived(topic: String?, message: MqttMessage?) {
+                    if (topic == null || message == null) return
+                    if (!topic.endsWith("/releases")) return
+                    _releaseUpdates.tryEmit(message.toString())
+                }
 
                 override fun deliveryComplete(token: IMqttDeliveryToken?) = Unit
             })
@@ -87,6 +98,7 @@ class MqttConnectionMonitor {
             nextClient.connect(options, null, object : IMqttActionListener {
                 override fun onSuccess(asyncActionToken: IMqttToken?) {
                     _status.value = MqttConnectionSnapshot(LinkState.CONNECTED)
+                    subscribeToReleaseTopic()
                 }
 
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
@@ -113,6 +125,7 @@ class MqttConnectionMonitor {
     private fun stopInternal(state: LinkState, error: String? = null) {
         val existing = client
         client = null
+        subscribedTopicPrefix = null
         if (existing != null) {
             runCatching {
                 if (existing.isConnected) {
@@ -122,6 +135,25 @@ class MqttConnectionMonitor {
             runCatching { existing.close() }
         }
         _status.value = MqttConnectionSnapshot(state = state, lastError = error)
+    }
+
+    @Synchronized
+    private fun subscribeToReleaseTopic() {
+        val topicPrefix = subscribedTopicPrefix?.takeIf { it.isNotBlank() } ?: return
+        val activeClient = client ?: return
+        if (!activeClient.isConnected) return
+
+        val topic = "$topicPrefix/releases"
+        activeClient.subscribe(topic, 1, null, object : IMqttActionListener {
+            override fun onSuccess(asyncActionToken: IMqttToken?) = Unit
+
+            override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                _status.value = MqttConnectionSnapshot(
+                    state = LinkState.DISCONNECTED,
+                    lastError = exception?.message ?: "MQTT subscribe failed",
+                )
+            }
+        })
     }
 
     private fun normalizeBrokerUri(value: String): String? {

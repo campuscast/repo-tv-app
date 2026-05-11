@@ -29,9 +29,11 @@ class MainActivity : ComponentActivity() {
         val app = application as CampusCastTvApplication
         PlayerViewModelFactory(app.container.playerRepository)
     }
+    private val appContainer by lazy { (application as CampusCastTvApplication).container }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        appContainer.screenCaptureService.attach(this)
 
         setContent {
             CampusCastTheme {
@@ -40,6 +42,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        appContainer.screenCaptureService.detach(this)
+        super.onDestroy()
     }
 }
 
